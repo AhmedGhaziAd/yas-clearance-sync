@@ -19,6 +19,6 @@ jobs:
         with:
           node-version: 20
       - name: Sync Yas stock to storefront
-        run: node sync.mjs
+        run: node .github/workflows/sync.mjs
         env:
           SHOPIFY_ADMIN_TOKEN: ${{ secrets.SHOPIFY_ADMIN_TOKEN }}
