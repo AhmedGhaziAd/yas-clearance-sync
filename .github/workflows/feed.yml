@@ -1,4 +1,4 @@
-name: ChatGPT Ads product feed
+name: ChatGPT Ads + Microsoft product feeds
 
 on:
   schedule:
@@ -21,11 +21,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Build feed from Shopify
+      - name: Build feeds from Shopify
         run: node .github/workflows/feed.mjs
         env:
           SHOPIFY_ADMIN_TOKEN: ${{ secrets.SHOPIFY_ADMIN_TOKEN }}
-      - name: Publish feed.tsv to the "feed" branch
+      - name: Publish feed.tsv + microsoft.tsv to the "feed" branch
         working-directory: out
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -33,7 +33,8 @@ jobs:
           git init -q -b feed
           git config user.name "feed-bot"
           git config user.email "feed-bot@users.noreply.github.com"
-          git add feed.tsv
+          git add feed.tsv microsoft.tsv
           git commit -q -m "Feed $(date -u +%F' '%H:%M) UTC"
           git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" feed
-          echo "Feed URL: https://raw.githubusercontent.com/${{ github.repository }}/feed/feed.tsv"
+          echo "OpenAI feed URL:    https://raw.githubusercontent.com/${{ github.repository }}/feed/feed.tsv"
+          echo "Microsoft feed URL: https://raw.githubusercontent.com/${{ github.repository }}/feed/microsoft.tsv"
