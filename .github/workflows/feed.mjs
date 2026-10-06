@@ -1,8 +1,11 @@
 // ============================================================================
-//  ebarza -> ChatGPT (OpenAI Ads) product feed - runs on GitHub Actions.
+//  ebarza -> ChatGPT (OpenAI Ads) + Microsoft Merchant Center product feeds
+//  Runs on GitHub Actions.
 //  1. Asks Shopify for ALL active products (bulk export, any catalog size)
-//  2. Builds one row per variant in OpenAI's feed format
-//  3. Writes out/feed.tsv  (the workflow publishes it to the "feed" branch)
+//  2. Builds one row per variant
+//  3. Writes out/feed.tsv       (OpenAI feed format)
+//     Writes out/microsoft.tsv  (Microsoft / Google Shopping feed format)
+//     The workflow publishes both to the "feed" branch
 //  Needs env SHOPIFY_ADMIN_TOKEN with scopes: read_products, read_inventory
 //  Local test without Shopify:  node feed.mjs --from sample.jsonl
 // ============================================================================
@@ -93,6 +96,33 @@ const COLUMNS = [
   'is_eligible_search', 'is_eligible_checkout', 'is_ads_eligible',
 ];
 
+// ---- Microsoft Merchant Center (Google Shopping style) columns -------------
+const MS_COLUMNS = [
+  'id', 'item_group_id', 'title', 'description', 'link', 'image_link', 'additional_image_link',
+  'price', 'sale_price', 'availability', 'condition', 'brand', 'gtin', 'mpn',
+  'identifier_exists', 'product_type',
+];
+// backorder = "continue selling" items that can still be ordered -> show as in stock
+const MS_AVAIL = { in_stock: 'in stock', backorder: 'in stock', out_of_stock: 'out of stock' };
+const msRow = r => ({
+  id: r.item_id,
+  item_group_id: r.group_id,
+  title: r.title,
+  description: r.description,
+  link: r.url,
+  image_link: r.image_url,
+  additional_image_link: r.additional_image_urls,
+  price: r.price,
+  sale_price: r.sale_price,
+  availability: MS_AVAIL[r.availability] || 'in stock',
+  condition: 'new',
+  brand: r.brand,
+  gtin: r.gtin,
+  mpn: r.mpn,
+  identifier_exists: r.gtin || r.mpn ? 'yes' : 'no',
+  product_type: r.product_category,
+});
+
 function rows(products) {
   const out = [];
   const skipped = { notOnline: 0, giftCard: 0, noImage: 0, noPrice: 0 };
@@ -143,6 +173,8 @@ function rows(products) {
   return { out, skipped };
 }
 
+const toTsv = (cols, list) => [cols.join('\t'), ...list.map(r => cols.map(c => clean(r[c])).join('\t'))].join('\n') + '\n';
+
 (async () => {
   const fromIdx = process.argv.indexOf('--from');
   const jsonl = fromIdx > 0 ? readFileSync(process.argv[fromIdx + 1], 'utf8') : await bulkExport();
@@ -150,9 +182,13 @@ function rows(products) {
   const { out, skipped } = rows(products);
   if (fromIdx < 0 && out.length < 10) throw new Error(`Only ${out.length} rows - refusing to publish a broken feed`);
 
-  const tsv = [COLUMNS.join('\t'), ...out.map(r => COLUMNS.map(c => clean(r[c])).join('\t'))].join('\n') + '\n';
   mkdirSync('out', { recursive: true });
+  const tsv = toTsv(COLUMNS, out);
   writeFileSync('out/feed.tsv', tsv, 'utf8');
+  const msTsv = toTsv(MS_COLUMNS, out.map(msRow));
+  writeFileSync('out/microsoft.tsv', msTsv, 'utf8');
+
   const inStock = out.filter(r => r.availability !== 'out_of_stock').length;
-  console.log(`${products.length} products -> ${out.length} rows (${inStock} sellable). Skipped: ${JSON.stringify(skipped)}. ${(tsv.length / 1024).toFixed(0)} KB`);
+  console.log(`${products.length} products -> ${out.length} rows (${inStock} sellable). Skipped: ${JSON.stringify(skipped)}. ` +
+    `OpenAI ${(tsv.length / 1024).toFixed(0)} KB, Microsoft ${(msTsv.length / 1024).toFixed(0)} KB`);
 })().catch(e => { console.error('Failed:', e.message); process.exit(1); });
